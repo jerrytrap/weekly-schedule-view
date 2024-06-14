@@ -5,12 +5,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.StringRes
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
-internal class WeeklyTimeTable @JvmOverloads constructor(
+class WeeklyTimeTable @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
@@ -23,9 +25,17 @@ internal class WeeklyTimeTable @JvmOverloads constructor(
     private val cellHeight
         get() = (height / rows).toFloat()
 
-    private var startDay = LocalDate.now()
-    private var endDay = startDay.plusDays(7)
+    private val today = LocalDate.now()
+    var startDay: LocalDate = today.minusDays(today.dayOfWeek.ordinal.toLong())
+        set(value) {
+            field = value
+            endDay = value.plusDays(6)
+            invalidate()
+        }
+    private var endDay = startDay.plusDays(6)
     private var startTime = 9
+
+    private var cellClickListener: CellClickListener? = null
 
     var eventList: List<LocalDateTime> = emptyList()
         set(value) {
@@ -33,10 +43,8 @@ internal class WeeklyTimeTable @JvmOverloads constructor(
             invalidate()
         }
 
-    fun setStartDay(day: LocalDate) {
-        startDay = day
-        endDay = startDay.plusDays(7)
-        invalidate()
+    fun setOnCellClickListener(listener: CellClickListener) {
+        cellClickListener = listener
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -46,6 +54,31 @@ internal class WeeklyTimeTable @JvmOverloads constructor(
         drawLines(canvas)
         drawText(canvas)
         paintEvent(canvas)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        when(event?.action) {
+            MotionEvent.ACTION_DOWN -> {
+                val x = (event.x / cellWidth).toLong() - 1
+                val y = (event.y / cellHeight).toInt() - 1
+
+                if (x in 0 until columns - 1 && y in 0 until rows - 1) {
+                    val localDateTime = LocalDateTime.of(startDay.plusDays(x), LocalTime.of(startTime.plus(y), 0))
+                    cellClickListener?.onClick(localDateTime)
+                }
+                performClick()
+            }
+        }
+        return true
+    }
+
+    interface CellClickListener {
+        fun onClick(localDateTime: LocalDateTime)
     }
 
     private fun drawBorder(canvas: Canvas) {
@@ -154,7 +187,7 @@ internal class WeeklyTimeTable @JvmOverloads constructor(
         eventList.forEach {
             val date = it.toLocalDate()
 
-            if (date.isAfter(startDay) && date.isBefore(endDay)) {
+            if (date.isBetween(startDay, endDay)) {
                 val row = it.hour - startTime + 1
                 val col = date.dayOfWeek.value
 
@@ -165,6 +198,9 @@ internal class WeeklyTimeTable @JvmOverloads constructor(
             }
         }
     }
+
+    private fun LocalDate.isBetween(start: LocalDate, end: LocalDate): Boolean =
+        (isAfter(start) || isEqual(start)) && (isBefore(end) || isEqual(end))
 
     enum class DayOfWeek(@StringRes val dayName: Int) {
         MON(R.string.monday),
